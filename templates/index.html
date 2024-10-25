@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detección de Objetos</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            background: linear-gradient(to right, #6a11cb, #2575fc);
+            color: white;
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            margin: 0;
+        }
+        .container {
+            text-align: center;
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 30px;
+            border-radius: 10px;
+        }
+        h1 {
+            margin-bottom: 20px;
+        }
+        p {
+            font-size: 1.5em;
+        }
+    </style>
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+            socket.on('object_detected', data => {
+                document.getElementById('status').innerText = data.message;
+            });
+        });
+    </script>
+</head>
+<body>
+    <div class="container">
+        <h1>Detección de Objetos con Teachable Machine</h1>
+        <p id="status">Esperando detección...</p>
+    </div>
+</body>
+</html>
