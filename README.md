@@ -1,205 +1,202 @@
-### Guía para Detección de Color Azul en Tiempo Real con OpenCV y Flask-SocketIO
+## **Pasos para Implementar el Proyecto**
 
-#### Objetivo:
-Esta guía te llevará paso a paso a implementar un sistema de detección de color azul en tiempo real usando **OpenCV** para capturar imágenes de la cámara, y **Flask-SocketIO** para enviar actualizaciones en tiempo real a una página web que mostrará si el color azul ha sido detectado o no.
+### **Paso 1: Estructura del Proyecto**
 
-### Paso 1: Configuración del Entorno
-
-#### 1. Instalar las librerías necesarias
-
-Abre tu terminal y ejecuta los siguientes comandos para instalar las librerías que utilizaremos:
-
-```bash
-pip install opencv-python Flask Flask-SocketIO requests eventlet
-```
-
-### Paso 2: Creación de la Estructura del Proyecto
-
-Crea una carpeta para el proyecto llamada `detector_color` y dentro de ella las siguientes carpetas y archivos:
+Crea la siguiente estructura de carpetas para mantener todo organizado:
 
 ```
-detector_color/
-├── app.py            # Código del servidor Flask
-├── detector.py       # Código de detección de color en OpenCV
-└── templates/
-    └── index.html    # Página web para mostrar los resultados en tiempo real
+/granja-inteligente
+│
+├── /model                    # Carpeta del modelo entrenado con Teachable Machine
+│   └── keras_model.h5        # Archivo del modelo
+├── /templates                # Carpeta para las plantillas HTML
+│   └── index.html            # Interfaz de la granja inteligente
+├── app.py                    # Código del servidor Flask
+├── detector.py               # Código para la detección en tiempo real
+└── requirements.txt          # Dependencias del proyecto
 ```
 
-### Paso 3: Escribir el Servidor Flask
+---
 
-El servidor Flask será responsable de recibir las notificaciones del cliente OpenCV y emitir mensajes en tiempo real a la página web. Crea el archivo `app.py` con el siguiente contenido:
+### **Paso 2: Código Completo del Proyecto**
 
-#### Código en `app.py`:
+#### **1. `detector.py` - Detección en Tiempo Real**
 
 ```python
-from flask import Flask, render_template, request
-from flask_socketio import SocketIO, emit
-
-app = Flask(__name__)
-socketio = SocketIO(app)
-
-# Página principal
-@app.route('/')
-def index():
-    return render_template('index.html')
-
-# Ruta para recibir la notificación del color azul
-@app.route('/upload', methods=['POST'])
-def upload_file():
-    data = request.json
-    if data and 'message' in data:
-        if data['message'] == 'Color azul detectado':
-            socketio.emit('color_detected', {'message': 'Color azul detectado'})
-        elif data['message'] == 'Color azul no detectado':
-            socketio.emit('color_detected', {'message': 'No se ha detectado el color azul'})
-        return 'Mensaje recibido', 200
-    return 'No se recibió ningún mensaje', 400
-
-if __name__ == "__main__":
-    socketio.run(app, debug=True)
-```
-
-### Paso 4: Crear la Página Web
-
-La página web se conectará al servidor Flask utilizando **WebSockets** y mostrará el estado de la detección de color en tiempo real. Crea el archivo `index.html` dentro de la carpeta `templates/`.
-
-#### Código en `index.html`:
-
-```html
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Color Detection</title>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
-    <script type="text/javascript">
-        document.addEventListener('DOMContentLoaded', (event) => {
-            // Conectar al servidor de WebSockets
-            var socket = io();
-
-            // Escuchar el evento 'color_detected' desde el servidor
-            socket.on('color_detected', function(data) {
-                document.getElementById('status').innerText = data.message;
-            });
-        });
-    </script>
-</head>
-<body>
-    <h1>Detección de Color</h1>
-    <p id="status">No se ha detectado el color azul</p>
-</body>
-</html>
-```
-
-### Paso 5: Crear el Cliente de Detección de Color (OpenCV)
-
-El cliente en Python utilizará OpenCV para capturar imágenes de la cámara y detectar si hay color azul. Dependiendo de si se detecta o no, enviará una notificación al servidor Flask.
-
-Crea el archivo `detector.py` con el siguiente contenido:
-
-#### Código en `detector.py`:
-
-```python
-import cv2
+import tensorflow.keras as keras
 import numpy as np
+import cv2
 import requests
 
-# URL del servidor al que se enviará la notificación
+# URL del servidor Flask al que se enviará la notificación
 url = 'http://localhost:5000/upload'
 
-# Inicia la captura de la cámara
+# Cargar el modelo entrenado desde Teachable Machine
+model = keras.models.load_model('model/keras_model.h5')
+class_names = ['Vaca', 'Gallina', 'Caballo', 'Ningún animal']
+
+# Iniciar la cámara
 cap = cv2.VideoCapture(0)
-
-# Definir el rango del color azul en el espacio de color HSV
-lower_blue = np.array([100, 150, 0])
-upper_blue = np.array([140, 255, 255])
-
-# Variable para almacenar el estado previo (para evitar enviar notificaciones repetitivas)
-was_blue_detected = False
+input_size = (224, 224)
+previous_prediction = None
 
 while True:
-    # Lee un frame de la cámara
     ret, frame = cap.read()
+    if not ret:
+        break
 
-    # Convertir el frame de BGR a HSV
-    hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
+    # Preprocesar la imagen para el modelo
+    resized_frame = cv2.resize(frame, input_size)
+    normalized_frame = np.array(resized_frame, dtype=np.float32) / 255.0
+    input_data = np.expand_dims(normalized_frame, axis=0)
 
-    # Crear una máscara que detecte el color azul
-    mask = cv2.inRange(hsv, lower_blue, upper_blue)
+    # Realizar la predicción
+    predictions = model.predict(input_data)
+    predicted_class = np.argmax(predictions[0])
 
-    # Contar los píxeles azules en la máscara
-    blue_pixels = cv2.countNonZero(mask)
+    # Mostrar el nombre del animal detectado
+    cv2.putText(
+        frame, f'Detectado: {class_names[predicted_class]}',
+        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 1, (0, 255, 0), 2
+    )
 
-    # Muestra el frame capturado y la máscara
-    cv2.imshow('Camera', frame)
-    cv2.imshow('Mask', mask)
+    # Enviar notificación si hay un cambio en la detección
+    if class_names[predicted_class] != previous_prediction:
+        data = {'message': f'Se detectó: {class_names[predicted_class]}'}
+        try:
+            requests.post(url, json=data)
+            previous_prediction = class_names[predicted_class]
+        except Exception as e:
+            print(f"Error enviando notificación: {e}")
 
-    # Si se detectan suficientes píxeles azules, enviar la notificación de que se detectó
-    if blue_pixels > 500:
-        if not was_blue_detected:
-            data = {'message': 'Color azul detectado'}
-            try:
-                requests.post(url, json=data)
-                was_blue_detected = True
-            except Exception as e:
-                print(f"Error enviando la notificación: {e}")
-    else:
-        # Si ya no se detecta el color azul, enviar la notificación de que no se detecta más
-        if was_blue_detected:
-            data = {'message': 'Color azul no detectado'}
-            try:
-                requests.post(url, json=data)
-                was_blue_detected = False
-            except Exception as e:
-                print(f"Error enviando la notificación: {e}")
+    # Mostrar el frame en pantalla
+    cv2.imshow('Detección de Objeto', frame)
 
-    # Si presionas 'q', se cierra la ventana
+    # Salir con 'q'
     if cv2.waitKey(1) & 0xFF == ord('q'):
         break
 
-# Libera la cámara y cierra las ventanas
 cap.release()
 cv2.destroyAllWindows()
 ```
 
-### Paso 6: Ejecutar el Proyecto
+---
 
-#### 1. Ejecuta el servidor Flask:
+#### **2. `app.py` - Servidor Flask con Socket.IO**
 
-Abre tu terminal en la carpeta del proyecto y ejecuta el servidor Flask con:
+```python
+from flask import Flask, render_template, request
+from flask_socketio import SocketIO, emit
+import eventlet
 
-```bash
-python app.py
+app = Flask(__name__)
+socketio = SocketIO(app, cors_allowed_origins="*")
+
+@app.route('/')
+def index():
+    return render_template('index.html')
+
+@app.route('/upload', methods=['POST'])
+def upload_file():
+    data = request.json
+    if data and 'message' in data:
+        socketio.emit('object_detected', {'message': data['message']})
+        return 'Mensaje recibido', 200
+    return 'No se recibió ningún mensaje', 400
+
+if __name__ == "__main__":
+    socketio.run(app, debug=True, host='0.0.0.0', port=5000)
 ```
 
-El servidor estará escuchando en `http://localhost:5000`.
+---
 
-#### 2. Ejecuta el cliente OpenCV:
+#### **3. `templates/index.html` - Interfaz HTML**
 
-Abre otra terminal en la misma carpeta del proyecto y ejecuta el script de detección de color:
+```html
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detección de Animales en la Granja</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.min.js"></script>
+    <style>
+        body {
+            font-family: 'Comic Sans MS', cursive, sans-serif;
+            background: url('https://cdn.pixabay.com/photo/2024/01/09/14/44/cow-8497722_1280.jpg') no-repeat center center fixed;
+            background-size: cover;
+            margin: 0;
+            padding: 0;
+            color: white;
+        }
+        .container {
+            background-color: rgba(0, 0, 0, 0.6);
+            padding: 40px;
+            margin: 100px auto;
+            width: 80%;
+            max-width: 600px;
+            text-align: center;
+            border-radius: 15px;
+            box-shadow: 0px 0px 15px 5px rgba(0, 0, 0, 0.5);
+        }
+        h1 {
+            font-size: 3em;
+            margin-bottom: 20px;
+            color: #FFD700;
+            text-shadow: 2px 2px 4px #000;
+        }
+        p {
+            font-size: 1.5em;
+            margin-bottom: 30px;
+        }
+        .status {
+            font-size: 1.2em;
+            background-color: rgba(255, 255, 255, 0.8);
+            color: #333;
+            padding: 10px;
+            border-radius: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Granja Inteligente</h1>
+        <p id="status" class="status">Esperando detección de animales...</p>
+    </div>
 
-```bash
-python detector.py
+    <script type="text/javascript">
+        document.addEventListener('DOMContentLoaded', () => {
+            const socket = io();
+
+            socket.on('connect', () => {
+                console.log('Conectado a Socket.IO');
+            });
+
+            socket.on('object_detected', data => {
+                console.log('Datos recibidos:', data);
+                document.getElementById('status').innerText = data.message;
+            });
+
+            socket.on('disconnect', () => {
+                console.log('Desconectado de Socket.IO');
+            });
+        });
+    </script>
+</body>
+</html>
 ```
 
-Esto iniciará la detección de color azul desde la cámara.
+---
 
-#### 3. Abre la página web:
+#### **4. `requirements.txt` - Dependencias del Proyecto**
 
-Accede a `http://localhost:5000` desde tu navegador. Verás que el mensaje en la página cambia en tiempo real dependiendo de si el color azul es detectado o no por el cliente OpenCV.
+```
+flask
+flask-socketio
+eventlet
+tensorflow
+opencv-python
+requests
+```
 
-### Explicación del Funcionamiento
-
-1. **Detección de color azul con OpenCV**: 
-   - OpenCV captura frames en tiempo real desde la cámara.
-   - La imagen es convertida al espacio de color HSV para aplicar una máscara que detecte el color azul.
-   - Dependiendo de si se detecta azul o no, el cliente OpenCV envía una notificación al servidor Flask.
-
-2. **Servidor Flask y WebSockets**: 
-   - Flask recibe las notificaciones enviadas por el cliente.
-   - El servidor usa WebSockets para notificar en tiempo real al navegador web si el color azul ha sido detectado o no.
-
-3. **Actualización en tiempo real de la página web**: 
-   - La página web se actualiza automáticamente mediante **WebSockets** sin necesidad de ser recargada manualmente.
-   - El mensaje cambia entre "Color azul detectado" y "No se ha detectado el color azul" según la detección del cliente OpenCV.
+---
