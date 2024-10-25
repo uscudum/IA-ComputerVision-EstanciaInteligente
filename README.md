@@ -5,7 +5,7 @@
 Crea la siguiente estructura de carpetas para mantener todo organizado:
 
 ```
-/granja-inteligente
+/estancia-inteligente
 │
 ├── /model                    # Carpeta del modelo entrenado con Teachable Machine
 │   └── keras_model.h5        # Archivo del modelo
