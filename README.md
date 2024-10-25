@@ -201,8 +201,8 @@ requests
 
 ---
 
-#### **5: Configura tu Entorno de Python
-Asegúrate de instalar las librerías necesarias:
+#### **5. Configura tu Entorno de Python**
+Debemos segurarnos de tener instaladas las librerías necesarias:
 
 ```
 pip install tensorflow opencv-python-headless numpy
